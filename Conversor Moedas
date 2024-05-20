@@ -1,0 +1,86 @@
+import requests
+import tkinter as tk
+from tkinter import ttk
+from datetime import datetime
+
+def obter_taxas_de_cambio():
+    url = "https://api.coingecko.com/api/v3/exchange_rates"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()["rates"]
+    else:
+        raise Exception("Erro ao obter taxas de câmbio")
+
+def converter_moeda(valor, de_moeda, para_moeda, taxas_de_cambio):
+    valor_em_btc = valor / taxas_de_cambio[de_moeda]["value"]
+    valor_convertido = valor_em_btc * taxas_de_cambio[para_moeda]["value"]
+    return valor_convertido
+
+def atualizar_conversao(*args):
+    try:
+        valor = float(entry_valor.get())
+        de_moeda = combo_de_moeda.get().split()[0]  # Obter apenas o código da moeda
+        para_moeda = combo_para_moeda.get().split()[0]
+        if de_moeda not in taxas_de_cambio or para_moeda not in taxas_de_cambio:
+            label_resultado.config(text="Moeda não suportada.")
+            return
+        valor_convertido = converter_moeda(valor, de_moeda, para_moeda, taxas_de_cambio)
+        hora_atualizacao = datetime.now().strftime("%H:%M")
+        resultado_texto = f"{valor:.2f} {de_moeda} é igual a {valor_convertido:.2f} {para_moeda}"
+        resultado_texto += f" (atualizado às {hora_atualizacao})"
+        label_resultado.config(text=resultado_texto)
+    except ValueError:
+        label_resultado.config(text="Por favor, insira um valor numérico válido.")
+
+def inverter_moedas():
+    de_moeda_atual = combo_de_moeda.get()
+    para_moeda_atual = combo_para_moeda.get()
+    combo_de_moeda.set(para_moeda_atual)
+    combo_para_moeda.set(de_moeda_atual)
+    atualizar_conversao()
+
+# Obter taxas de câmbio
+try:
+    taxas_de_cambio = obter_taxas_de_cambio()
+    moedas = [(moeda, f"{moeda} ({taxas_de_cambio[moeda]['name']})") for moeda in taxas_de_cambio]
+except Exception as e:
+    print(e)
+    exit()
+
+# Configurar interface gráfica
+root = tk.Tk()
+root.title("Conversor de Moedas")
+
+frame = tk.Frame(root)
+frame.pack(padx=10, pady=10)
+
+label_valor = tk.Label(frame, text="Valor:")
+label_valor.grid(row=0, column=0, pady=5)
+
+entry_valor = tk.Entry(frame)
+entry_valor.grid(row=0, column=1, pady=5)
+entry_valor.bind("<KeyRelease>", atualizar_conversao)
+
+label_de_moeda = tk.Label(frame, text="De:")
+label_de_moeda.grid(row=1, column=0, pady=5)
+
+combo_de_moeda = ttk.Combobox(frame, values=moedas, width=40)
+combo_de_moeda.grid(row=1, column=1, pady=5)
+combo_de_moeda.set(moedas[0][0])
+combo_de_moeda.bind("<<ComboboxSelected>>", atualizar_conversao)
+
+label_para_moeda = tk.Label(frame, text="Para:")
+label_para_moeda.grid(row=2, column=0, pady=5)
+
+combo_para_moeda = ttk.Combobox(frame, values=moedas, width=40)
+combo_para_moeda.grid(row=2, column=1, pady=5)
+combo_para_moeda.set(moedas[1][0])
+combo_para_moeda.bind("<<ComboboxSelected>>", atualizar_conversao)
+
+botao_inverter = tk.Button(frame, text="Inverter Moedas", command=inverter_moedas)
+botao_inverter.grid(row=3, columnspan=2, pady=10)
+
+label_resultado = tk.Label(frame, text="")
+label_resultado.grid(row=4, columnspan=2, pady=5)
+
+root.mainloop()
