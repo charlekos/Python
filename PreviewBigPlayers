@@ -1,0 +1,138 @@
+import MetaTrader5 as mt5
+import tkinter as tk
+from tkinter import ttk
+from datetime import datetime
+import pytz
+
+# Função para iniciar o MT5
+def initialize_mt5():
+    if not mt5.initialize():
+        print("initialize() failed, error code =", mt5.last_error())
+        quit()
+
+# Função para verificar operações de Big Players em tempo real
+def monitor_big_players(symbols, threshold, update_interval):
+    last_ticks = {symbol: None for symbol in symbols}
+    net_volume = {symbol: 0 for symbol in symbols}  # Dicionário para armazenar o volume líquido
+
+    for symbol in symbols:
+        # Subscrição de ticks
+        if not mt5.symbol_select(symbol, True):
+            print(f"Failed to select symbol {symbol}, error code =", mt5.last_error())
+            continue
+        
+        print(f"Monitoring {symbol} for Big Player activities...")
+
+    def update_data():
+        for symbol in symbols:
+            # Obter último tick
+            tick = mt5.symbol_info_tick(symbol)
+            if tick is None:
+                print(f"No tick data available for {symbol}, error code =", mt5.last_error())
+                continue
+            
+            # Verificar se o volume absoluto é maior ou igual ao threshold
+            if abs(tick.volume) >= threshold:
+                # Atualizar janela com os dados do Big Player
+                update_window(tick, symbol)
+
+                # Verificar o tipo de transação com base no último preço
+                last_tick = last_ticks[symbol]
+                if last_tick is not None:
+                    if tick.last > last_tick.last:
+                        update_buy_count(symbol)
+                        net_volume[symbol] += tick.volume  # Adicionar volume de compra
+                    elif tick.last < last_tick.last:
+                        update_sell_count(symbol)
+                        net_volume[symbol] -= tick.volume  # Subtrair volume de venda
+
+                    # Atualizar a variável de volume líquido na interface
+                    net_volume_var[symbol].set(f"{net_volume[symbol]:.2f}")
+
+                # Atualizar o último tick para o símbolo
+                last_ticks[symbol] = tick
+            else:
+                # Atualizar o último tick se o volume não atingir o threshold
+                last_ticks[symbol] = tick
+
+        # Agendar a próxima atualização
+        root.after(update_interval, update_data)
+
+    # Iniciar o loop de atualização
+    update_data()
+
+# Função para atualizar a janela com os dados do Big Player
+def update_window(tick, symbol):
+    local_timezone = pytz.timezone('Africa/Addis_Ababa')
+    trade_time_utc = datetime.fromtimestamp(tick.time)
+    trade_time = pytz.utc.localize(trade_time_utc).astimezone(local_timezone)
+    
+    volume = abs(tick.volume)
+    volume_var[symbol].set(f"{volume}")
+    price_var[symbol].set(f"{tick.last:.2f}")
+    time_var[symbol].set(f"{trade_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+# Função para atualizar o contador de compras
+def update_buy_count(symbol):
+    current_count = int(buy_count_var[symbol].get())
+    buy_count_var[symbol].set(str(current_count + 1))
+
+# Função para atualizar o contador de vendas
+def update_sell_count(symbol):
+    current_count = int(sell_count_var[symbol].get())
+    sell_count_var[symbol].set(str(current_count + 1))
+
+# Inicializar a janela do Tkinter
+root = tk.Tk()
+root.title("Big Player Monitor")
+
+# Dicionários para armazenar variáveis Tkinter
+volume_var = {}
+price_var = {}
+time_var = {}
+buy_count_var = {}
+sell_count_var = {}
+net_volume_var = {}  # Dicionário para armazenar a variável de volume líquido
+
+# Layout da janela
+row = 0
+for symbol in ["WINM24", "INDM24"]:
+    ttk.Label(root, text=f"{symbol}").grid(column=0, row=row, padx=10, pady=10)
+    volume_var[symbol] = tk.StringVar()
+    price_var[symbol] = tk.StringVar()
+    time_var[symbol] = tk.StringVar()
+    buy_count_var[symbol] = tk.StringVar(value="0")  # Definindo o valor inicial como zero
+    sell_count_var[symbol] = tk.StringVar(value="0")  # Definindo o valor inicial como zero
+    net_volume_var[symbol] = tk.StringVar(value="0.00")  # Definindo o valor inicial como zero
+
+    ttk.Label(root, text="Volume:").grid(column=1, row=row, padx=10, pady=10)
+    ttk.Label(root, textvariable=volume_var[symbol]).grid(column=2, row=row, padx=10, pady=10)
+    ttk.Label(root, text="Preço:").grid(column=3, row=row, padx=10, pady=10)
+    ttk.Label(root, textvariable=price_var[symbol]).grid(column=4, row=row, padx=10, pady=10)
+    ttk.Label(root, text="Data/Hora:").grid(column=5, row=row, padx=10, pady=10)
+    ttk.Label(root, textvariable=time_var[symbol]).grid(column=6, row=row, padx=10, pady=10)
+    ttk.Label(root, text="Compras:").grid(column=7, row=row, padx=10, pady=10)
+    ttk.Label(root, textvariable=buy_count_var[symbol]).grid(column=8, row=row, padx=10, pady=10)
+    ttk.Label(root, text="Vendas:").grid(column=9, row=row, padx=10, pady=10)
+    ttk.Label(root, textvariable=sell_count_var[symbol]).grid(column=10, row=row, padx=10, pady=10)
+    ttk.Label(root, text="Volume Líquido:").grid(column=11, row=row, padx=10, pady=10)
+    ttk.Label(root, textvariable=net_volume_var[symbol]).grid(column=12, row=row, padx=10, pady=10)
+
+    row += 1
+
+# Parâmetros
+symbols = ["WINM24", "INDM24"]
+threshold_volume = 10  # Defina o volume mínimo para ser considerado um Big Player
+update_interval = 5  # Intervalo de atualização em milissegundos
+
+# Inicializar MT5
+initialize_mt5()
+
+# Monitorar operações de Big Players em tempo real
+monitor_big_players(symbols, threshold_volume, update_interval)
+
+# Iniciar a aplicação Tkinter
+root.mainloop()
+
+# Finalizar MT5
+mt5.shutdown()
